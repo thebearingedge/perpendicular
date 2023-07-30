@@ -53,6 +53,21 @@
                   sudo: 'ALL=(ALL) NOPASSWD: ALL'
                   ssh_authorized_keys:
                     - {{ lookup('file', public_key) }}
+              write_files:
+                - path: /etc/systemd/resolved.conf
+                  content: |
+                    [Resolve]
+                    DNS=1.1.1.1
+                    FallbackDNS=1.0.0.1 9.9.9.9
+                    Domains=~.
+                - path: /home/{{ vm_user }}/.hushlogin
+                  owner: {{ vm_user }}:{{ vm_user }}
+                  defer: true
+                - path: /home/{{ vm_user }}/.sudo_as_admin_successful
+                  owner: {{ vm_user }}:{{ vm_user }}
+                  defer: true
+              runcmd:
+                - systemctl restart systemd-resolved
 
         - name: Launch vm
           ansible.builtin.shell:
