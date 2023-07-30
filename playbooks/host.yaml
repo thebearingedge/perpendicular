@@ -1,0 +1,92 @@
+- name: Configure host
+  hosts: localhost
+  connection: local
+  tasks:
+
+    - name: Check for vm
+      ansible.builtin.shell:
+        cmd: |
+          multipass info {{ vm_name }} > /dev/null 2>&1
+      register: vm_exists
+      failed_when: false
+      changed_when: true
+
+    - name: Setup vm
+      when: vm_exists.rc != 0
+      vars:
+        private_key: "~/.ssh/{{ vm_name }}_ed25519"
+        public_key: "~/.ssh/{{ vm_name }}_ed25519.pub"
+        user_data: "~/.config/perpendicular/{{ vm_name }}.user-data.yaml"
+      block:
+
+        - name: Write config file
+          ansible.builtin.blockinfile:
+            path: "~/.config/perpendicular/{{ vm_name }}.conf"
+            create: true
+            mode: "0644"
+            block: |
+              name={{ vm_name }}
+              cpus={{ vm_cpus }}
+              disk={{ vm_disk }}
+              memory={{ vm_memory }}
+              image={{ vm_image }}
+
+        - name: Create ssh key
+          ansible.builtin.shell:
+            creates: "{{ private_key }}"
+            cmd: |
+              ssh-keygen -f {{ private_key }} -t ed25519 -N "" -C ""
+
+        - name: Create cloud-init config
+          ansible.builtin.shell:
+            creates: "{{ user_data }}"
+            cmd: |
+              echo "#cloud-config" > {{ user_data }}
+
+        - name: Populate cloud-init config
+          ansible.builtin.blockinfile:
+            path: "{{ user_data }}"
+            block: |
+              users:
+                - name: {{ vm_user }}
+                  shell: /bin/bash
+                  sudo: 'ALL=(ALL) NOPASSWD: ALL'
+                  ssh_authorized_keys:
+                    - {{ lookup('file', public_key) }}
+
+        - name: Launch vm
+          ansible.builtin.shell:
+            cmd: |
+              multipass launch \
+                -n {{ vm_name }} \
+                -c {{ vm_cpus }} \
+                -m {{ vm_memory }} \
+                -d {{ vm_disk }} \
+                --cloud-init {{ user_data }} \
+                {{ vm_image }}
+          changed_when: true
+
+        - name: Get vm ipv4
+          ansible.builtin.shell:
+            cmd: |
+              set -o pipefail || true
+              multipass info {{ vm_name }} --format csv |
+              tail -n+2 |
+              awk -F ',' '{print $3}'
+          register: vm_ipv4
+          changed_when: true
+
+        - name: Update ssh config
+          ansible.builtin.blockinfile:
+            path: ~/.ssh/config
+            create: true
+            mode: "0600"
+            marker: '# {mark} PERPENDICULAR MANAGED BLOCK'
+            block: |
+              Host {{ vm_name }}
+                Hostname              {{ vm_ipv4.stdout }}
+                User                  {{ vm_user }}
+                IdentityFile          {{ private_key }}
+                LogLevel              ERROR
+                StrictHostKeyChecking no
+                UserKnownHostsFile    /dev/null
