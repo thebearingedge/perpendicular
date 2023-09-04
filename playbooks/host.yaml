@@ -69,6 +69,12 @@
               runcmd:
                 - systemctl restart systemd-resolved
 
+        - name: Create shared directory
+          ansible.builtin.file:
+            path: "{{ host_home }}/.perpendicular"
+            mode: "0755"
+            state: directory
+
         - name: Launch vm
           ansible.builtin.shell:
             cmd: |
@@ -78,6 +84,7 @@
                 -m {{ vm_memory }} \
                 -d {{ vm_disk }} \
                 --cloud-init {{ user_data }} \
+                --mount {{ host_home }}/.perpendicular:/home/{{ vm_user }}/.perpendicular \
                 {{ vm_image }}
           changed_when: true
 

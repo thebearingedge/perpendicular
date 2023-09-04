@@ -1,7 +1,7 @@
 #!/bin/sh -eu
 
 name="${1:-perpendicular}"
-user="${2:-dev}"
+user="${2:-$(whoami)}"
 
 vm_conf="$HOME"/.config/perpendicular/"$name".conf
 
@@ -23,5 +23,6 @@ ansible-playbook \
   -e vm_memory="$memory" \
   -e vm_image="$image" \
   -e vm_disk="$disk" \
+  -e host_home="$HOME" \
   -e ansible_python_interpreter="$(command -v python3 2> /dev/null)" \
   playbooks/host.yaml
