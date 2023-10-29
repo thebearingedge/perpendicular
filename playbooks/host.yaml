@@ -107,7 +107,7 @@
             path: ~/.ssh/config
             create: true
             mode: "0600"
-            marker: '# {mark} PERPENDICULAR MANAGED BLOCK'
+            marker: "# {mark} {{ vm_name }} MANAGED BLOCK"
             block: |
               Host {{ vm_name }}
                 Hostname              {{ vm_ipv4.stdout }}
