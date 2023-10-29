@@ -47,6 +47,10 @@
           ansible.builtin.blockinfile:
             path: "{{ user_data }}"
             block: |
+              packages:
+                - python3
+                - python3-pip
+                - python3-venv
               users:
                 - name: {{ vm_user }}
                   shell: /bin/bash
