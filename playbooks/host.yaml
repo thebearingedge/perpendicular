@@ -1,7 +1,34 @@
 - name: Configure host
   hosts: localhost
   connection: local
+  vars:
+    private_key: "{{ lookup('env', 'HOME') }}/.ssh/{{ vm_name }}_ed25519"
+    public_key: "{{ lookup('env', 'HOME') }}/.ssh/{{ vm_name }}_ed25519.pub"
   tasks:
+
+    - name: Write config file
+      ansible.builtin.blockinfile:
+        path: "{{ lookup('env', 'HOME') }}/.config/perpendicular/{{ vm_name }}.conf"
+        create: true
+        mode: "0644"
+        block: |
+          name={{ vm_name }}
+          cpus={{ vm_cpus }}
+          disk={{ vm_disk }}
+          memory={{ vm_memory }}
+          image={{ vm_image }}
+
+    - name: Create ssh key
+      ansible.builtin.shell:
+        creates: "{{ private_key }}"
+        cmd: |
+          ssh-keygen -f {{ private_key }} -t ed25519 -N "" -C ""
+
+    - name: Create shared directory
+      ansible.builtin.file:
+        path: "{{ lookup('env', 'HOME') }}/.perpendicular"
+        mode: "0755"
+        state: directory
 
     - name: Check for vm
       ansible.builtin.shell:
@@ -14,28 +41,8 @@
     - name: Setup vm
       when: vm_exists.rc != 0
       vars:
-        private_key: "~/.ssh/{{ vm_name }}_ed25519"
-        public_key: "~/.ssh/{{ vm_name }}_ed25519.pub"
-        user_data: "~/.config/perpendicular/{{ vm_name }}.user-data.yaml"
+        user_data: "{{ lookup('env', 'HOME') }}/.config/perpendicular/{{ vm_name }}.user-data.yaml"
       block:
-
-        - name: Write config file
-          ansible.builtin.blockinfile:
-            path: "~/.config/perpendicular/{{ vm_name }}.conf"
-            create: true
-            mode: "0644"
-            block: |
-              name={{ vm_name }}
-              cpus={{ vm_cpus }}
-              disk={{ vm_disk }}
-              memory={{ vm_memory }}
-              image={{ vm_image }}
-
-        - name: Create ssh key
-          ansible.builtin.shell:
-            creates: "{{ private_key }}"
-            cmd: |
-              ssh-keygen -f {{ private_key }} -t ed25519 -N "" -C ""
 
         - name: Create cloud-init config
           ansible.builtin.shell:
@@ -52,7 +59,7 @@
                 - python3-pip
                 - python3-venv
               users:
-                - name: {{ vm_user }}
+                - name: {{ lookup('env', 'USER') }}
                   shell: /bin/bash
                   sudo: 'ALL=(ALL) NOPASSWD: ALL'
                   ssh_authorized_keys:
@@ -64,20 +71,14 @@
                     DNS=1.1.1.1
                     FallbackDNS=1.0.0.1 9.9.9.9
                     Domains=~.
-                - path: /home/{{ vm_user }}/.hushlogin
-                  owner: {{ vm_user }}:{{ vm_user }}
+                - path: /home/{{ lookup('env', 'USER') }}/.hushlogin
+                  owner: {{ lookup('env', 'USER') }}:{{ lookup('env', 'USER') }}
                   defer: true
-                - path: /home/{{ vm_user }}/.sudo_as_admin_successful
-                  owner: {{ vm_user }}:{{ vm_user }}
+                - path: /home/{{ lookup('env', 'USER') }}/.sudo_as_admin_successful
+                  owner: {{ lookup('env', 'USER') }}:{{ lookup('env', 'USER') }}
                   defer: true
               runcmd:
                 - systemctl restart systemd-resolved
-
-        - name: Create shared directory
-          ansible.builtin.file:
-            path: "{{ host_home }}/.perpendicular"
-            mode: "0755"
-            state: directory
 
         - name: Launch vm
           ansible.builtin.shell:
@@ -88,7 +89,6 @@
                 -m {{ vm_memory }} \
                 -d {{ vm_disk }} \
                 --cloud-init {{ user_data }} \
-                --mount {{ host_home }}/.perpendicular:/home/{{ vm_user }}/.perpendicular \
                 {{ vm_image }}
           changed_when: true
 
@@ -104,15 +104,34 @@
 
         - name: Update ssh config
           ansible.builtin.blockinfile:
-            path: ~/.ssh/config
+            path: "{{ lookup('env', 'HOME') }}/.ssh/config"
             create: true
             mode: "0600"
             marker: "# {mark} {{ vm_name }} MANAGED BLOCK"
             block: |
               Host {{ vm_name }}
                 Hostname              {{ vm_ipv4.stdout }}
-                User                  {{ vm_user }}
+                User                  {{ lookup('env', 'USER') }}
                 IdentityFile          {{ private_key }}
                 LogLevel              ERROR
                 StrictHostKeyChecking no
                 UserKnownHostsFile    /dev/null
+
+        - name: Stop vm
+          ansible.builtin.shell:
+            cmd: |
+              multipass stop {{ vm_name }}
+
+    - name: Mount shared directory
+      ansible.builtin.shell:
+        cmd: |
+          multipass mount \
+            -u {{ ansible_user_uid }}:1000 \
+            -g {{ ansible_user_gid }}:1000 \
+            {{ lookup('env', 'HOME') }}/.perpendicular \
+            {{ vm_name }}:/home/{{ lookup('env', 'USER') }}/.perpendicular
+
+    - name: Start vm
+      ansible.builtin.shell:
+        cmd: |
+          multipass start {{ vm_name }}
