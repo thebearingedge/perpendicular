@@ -71,12 +71,6 @@
                     DNS=1.1.1.1
                     FallbackDNS=1.0.0.1 9.9.9.9
                     Domains=~.
-                - path: /home/{{ lookup('env', 'USER') }}/.hushlogin
-                  owner: {{ lookup('env', 'USER') }}:{{ lookup('env', 'USER') }}
-                  defer: true
-                - path: /home/{{ lookup('env', 'USER') }}/.sudo_as_admin_successful
-                  owner: {{ lookup('env', 'USER') }}:{{ lookup('env', 'USER') }}
-                  defer: true
               runcmd:
                 - systemctl restart systemd-resolved
 
